@@ -126,6 +126,16 @@ env_decision() {
   esac
 }
 
+normalize_config_token() {
+  local raw="${1:-}"
+  raw="$(printf '%s' "$raw" | sed -e 's/^["'\'']*//' -e 's/["'\'']*$//')"
+  raw="$(printf '%s' "$raw" | xargs)"
+  case "$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')" in
+    ""|null|none) printf '' ;;
+    *) printf '%s' "$raw" ;;
+  esac
+}
+
 print_banner() {
   echo
   echo -e "${CYAN}${BOLD}Hermes macOS 安装器${NC}"
@@ -567,6 +577,7 @@ configure_dataeyes() {
   api_key="${DATAEYES_API_KEY:-}"
   if [ -f "$HERMES_HOME/config.yaml" ]; then
     existing_key="$(awk '/^[[:space:]]*api_key:[[:space:]]*/ {print $2; exit}' "$HERMES_HOME/config.yaml" 2>/dev/null || true)"
+    existing_key="$(normalize_config_token "$existing_key")"
   fi
   if [ -z "$api_key" ]; then
     log_info "如果已有 DataEyes 配置，将自动复用；否则会提示输入 API Key"
