@@ -6,6 +6,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from getpass import getpass
 from pathlib import Path
 
 import yaml
@@ -39,6 +40,24 @@ def save_yaml(path: Path, data: dict) -> None:
         yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
     )
+
+
+def normalize_value(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text in {'""', "''"}:
+        return ""
+    if text.lower() in {"", "null", "none"}:
+        return ""
+    return text
+
+
+def prompt_api_key() -> str:
+    try:
+        return normalize_value(getpass("请输入 DataEyes API Key: "))
+    except (EOFError, OSError):
+        return ""
 
 
 def fetch_models(base_url: str, api_key: str, timeout: int = 20) -> list[str]:
@@ -126,8 +145,10 @@ def main() -> int:
         if isinstance(config.get("model"), dict)
         else None
     )
-    effective_api_key = args.api_key or current_key
+    effective_api_key = normalize_value(args.api_key) or normalize_value(current_key)
 
+    if not effective_api_key:
+        effective_api_key = prompt_api_key()
     if not effective_api_key:
         print("未提供 DataEyes API Key，跳过模型配置。")
         return 0
