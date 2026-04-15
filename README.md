@@ -26,11 +26,16 @@ DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubuserco
 
 执行过程中会按顺序引导你完成：
 
-- DataEyes API Key 输入
+- DataEyes API Key 输入或确认
 - DataEyes 模型选择
 - `hermes gateway setup` 网关配置
 - `hermes gateway start` 服务启动
 - `hermes dashboard --no-open` 与浏览器打开
+
+如果当前机器已经保存过 DataEyes API Key，安装器也会继续在终端里提示你确认：
+
+- 直接输入新 Key：覆盖当前配置
+- 直接回车：复用当前配置
 
 ## 支持的安装行为
 
