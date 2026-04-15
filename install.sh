@@ -38,6 +38,17 @@ log_error() {
   echo -e "${RED}✗${NC} $1"
 }
 
+prompt_secret_tty() {
+  local prompt_text="$1"
+  local value=""
+  if [ -r /dev/tty ]; then
+    printf "%s" "$prompt_text" > /dev/tty
+    IFS= read -rs value < /dev/tty || true
+    printf "\n" > /dev/tty
+  fi
+  printf "%s" "$value"
+}
+
 print_banner() {
   echo
   echo -e "${CYAN}${BOLD}Hermes macOS 安装器${NC}"
@@ -330,6 +341,7 @@ import json
 import urllib.error
 import urllib.request
 from pathlib import Path
+import sys
 
 import yaml
 
@@ -385,8 +397,18 @@ def choose_model(models: list[str], default_model: str | None) -> str:
     print(f"可用模型 ({len(models)}):")
     for idx, model in enumerate(models, start=1):
         print(f"  {idx}. {model}")
+    input_stream = sys.stdin
+    if not input_stream.isatty():
+        try:
+            input_stream = open("/dev/tty", "r", encoding="utf-8")
+        except OSError:
+            input_stream = sys.stdin
     while True:
-        raw = input("请选择模型编号，或直接输入模型名: ").strip()
+        print("请选择模型编号，或直接输入模型名: ", end="", flush=True)
+        raw = input_stream.readline()
+        if raw == "":
+            raise SystemExit("无法读取终端输入，请设置 DATAEYES_MODEL 后重试。")
+        raw = raw.strip()
         if not raw:
             if default_model:
                 return default_model
@@ -463,13 +485,15 @@ PY
 configure_dataeyes() {
   local api_key helper
   local -a helper_args
+  local existing_key=""
   api_key="${DATAEYES_API_KEY:-}"
+  if [ -f "$HERMES_HOME/config.yaml" ]; then
+    existing_key="$(awk '/^[[:space:]]*api_key:[[:space:]]*/ {print $2; exit}' "$HERMES_HOME/config.yaml" 2>/dev/null || true)"
+  fi
   if [ -z "$api_key" ]; then
     log_info "如果已有 DataEyes 配置，将自动复用；否则会提示输入 API Key"
-    if [ ! -f "$HERMES_HOME/config.yaml" ]; then
-      printf "请输入 DataEyes API Key: "
-      IFS= read -rs api_key
-      printf "\n"
+    if [ -z "$existing_key" ]; then
+      api_key="$(prompt_secret_tty '请输入 DataEyes API Key: ')"
     fi
   fi
 
