@@ -74,8 +74,19 @@ def choose_model(models: list[str], default_model: str | None) -> str:
     for idx, model in enumerate(models, start=1):
         print(f"  {idx}. {model}")
 
+    input_stream = sys.stdin
+    if not input_stream.isatty():
+        try:
+            input_stream = open("/dev/tty", "r", encoding="utf-8")
+        except OSError:
+            input_stream = sys.stdin
+
     while True:
-        raw = input("请选择模型编号，或直接输入模型名: ").strip()
+        print("请选择模型编号，或直接输入模型名: ", end="", flush=True)
+        raw = input_stream.readline()
+        if raw == "":
+            raise SystemExit("无法读取终端输入，请设置 DATAEYES_MODEL 后重试。")
+        raw = raw.strip()
         if not raw:
             if default_model:
                 return default_model
