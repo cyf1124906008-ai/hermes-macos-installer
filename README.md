@@ -11,16 +11,16 @@
 
 ## 一行安装
 
-把仓库发布到 GitHub 后，推荐入口是：
+最稳定的方式是显式传入 `DATAEYES_API_KEY`：
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://fastly.jsdelivr.net/gh/cyf1124906008-ai/hermes-macos-installer@main/install.sh || curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
+DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
 ```
 
-如果你只想从 GitHub 原地址拉取：
+如果你已经在当前机器配置过 DataEyes，也可以直接运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh | bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
 ```
 
 ## 支持的安装行为
@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-insta
 
 ## 可选环境变量
 
-适合静默安装或 CI：
+适合静默安装或 CI，也是最推荐的调用方式：
 
 ```bash
 DATAEYES_API_KEY=sk-xxx \
