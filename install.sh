@@ -331,12 +331,7 @@ install_hermes() {
   log_success "Hermes Python 包安装完成"
 }
 
-ensure_node_for_browser_tools() {
-  if [ "$HERMES_WITH_BROWSER_TOOLS" != "1" ]; then
-    log_info "默认跳过浏览器工具和 Node 依赖安装"
-    return 0
-  fi
-
+ensure_node_runtime() {
   if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     log_success "Node 已存在: $(node --version)"
     return 0
@@ -376,10 +371,11 @@ ensure_node_for_browser_tools() {
 
 install_browser_tools() {
   if [ "$HERMES_WITH_BROWSER_TOOLS" != "1" ]; then
+    log_info "默认跳过浏览器工具和 Node 依赖安装"
     return 0
   fi
 
-  ensure_node_for_browser_tools
+  ensure_node_runtime
   if ! command -v npm >/dev/null 2>&1; then
     log_warn "没有 npm，跳过浏览器工具安装"
     return 0
@@ -637,18 +633,34 @@ maybe_start_gateway_service() {
 }
 
 start_dashboard_background() {
+  local dashboard_pid=""
+  local waited=0
   mkdir -p "$HERMES_HOME/logs"
   if lsof -iTCP:9119 -sTCP:LISTEN >/dev/null 2>&1; then
     log_success "检测到 Web UI 已在运行: http://127.0.0.1:9119"
     return 0
   fi
+  ensure_node_runtime || {
+    log_warn "Node/npm 不可用，无法启动 Web UI"
+    return 1
+  }
   nohup "$HERMES_CMD" dashboard --no-open >"$HERMES_HOME/logs/dashboard.log" 2>&1 &
-  sleep 2
-  if lsof -iTCP:9119 -sTCP:LISTEN >/dev/null 2>&1; then
-    log_success "Web UI 已启动: http://127.0.0.1:9119"
-    return 0
-  fi
+  dashboard_pid=$!
+  while [ "$waited" -lt 60 ]; do
+    if curl -fsS http://127.0.0.1:9119/ >/dev/null 2>&1 || lsof -iTCP:9119 -sTCP:LISTEN >/dev/null 2>&1; then
+      log_success "Web UI 已启动: http://127.0.0.1:9119"
+      return 0
+    fi
+    if ! kill -0 "$dashboard_pid" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
   log_warn "Web UI 启动可能失败，请查看: $HERMES_HOME/logs/dashboard.log"
+  if [ -f "$HERMES_HOME/logs/dashboard.log" ]; then
+    tail -n 20 "$HERMES_HOME/logs/dashboard.log" || true
+  fi
   return 1
 }
 
