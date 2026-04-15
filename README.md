@@ -8,6 +8,7 @@
 - 默认把模型提供商配置为 DataEyes 自定义 OpenAI 兼容接口
 - 根据 API Key 自动请求 `https://cloud.dataeyes.ai/v1/models` 获取模型列表给用户选择
 - 尽量优先使用国内更稳的下载源和镜像
+- 通过终端交互完成 API Key 输入、模型选择、网关配置、服务启动和 Web UI 打开
 
 ## 一行安装
 
@@ -22,6 +23,14 @@ DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubuserco
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
 ```
+
+执行过程中会按顺序引导你完成：
+
+- DataEyes API Key 输入
+- DataEyes 模型选择
+- `hermes gateway setup` 网关配置
+- `hermes gateway start` 服务启动
+- `hermes dashboard --no-open` 与浏览器打开
 
 ## 支持的安装行为
 
@@ -60,6 +69,9 @@ bash install.sh
 - `PIP_INDEX_URL`
 - `HERMES_INSTALL_EXTRAS`
 - `HERMES_WITH_BROWSER_TOOLS=1`
+- `HERMES_CONFIGURE_GATEWAY=yes|no|ask`
+- `HERMES_START_GATEWAY=yes|no|ask`
+- `HERMES_OPEN_WEBUI=yes|no|ask`
 
 ## 默认安装策略
 
