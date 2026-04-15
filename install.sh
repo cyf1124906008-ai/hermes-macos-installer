@@ -20,6 +20,9 @@ PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 NODE_DIST_MIRROR="${NODE_DIST_MIRROR:-https://npmmirror.com/mirrors/node}"
 HERMES_INSTALL_EXTRAS="${HERMES_INSTALL_EXTRAS:-cli,cron,pty,mcp,acp,web,messaging}"
 HERMES_WITH_BROWSER_TOOLS="${HERMES_WITH_BROWSER_TOOLS:-0}"
+HERMES_CONFIGURE_GATEWAY="${HERMES_CONFIGURE_GATEWAY:-ask}"
+HERMES_START_GATEWAY="${HERMES_START_GATEWAY:-ask}"
+HERMES_OPEN_WEBUI="${HERMES_OPEN_WEBUI:-ask}"
 LOCAL_BIN="$HOME/.local/bin"
 
 log_info() {
@@ -42,7 +45,7 @@ prompt_secret_tty_into() {
   local __var_name="$1"
   local prompt_text="$2"
   local value=""
-  if [ ! -r /dev/tty ]; then
+  if ! (: < /dev/tty) 2>/dev/null; then
     return 1
   fi
   printf "%s" "$prompt_text" > /dev/tty
@@ -53,6 +56,74 @@ prompt_secret_tty_into() {
   printf "\n" > /dev/tty
   printf -v "$__var_name" '%s' "$value"
   return 0
+}
+
+prompt_line_tty_into() {
+  local __var_name="$1"
+  local prompt_text="$2"
+  local value=""
+  if ! (: < /dev/tty) 2>/dev/null; then
+    return 1
+  fi
+  printf "%s" "$prompt_text" > /dev/tty
+  if ! IFS= read -r value < /dev/tty; then
+    printf "\n" > /dev/tty
+    return 1
+  fi
+  printf -v "$__var_name" '%s' "$value"
+  return 0
+}
+
+prompt_yes_no_tty() {
+  local prompt_text="$1"
+  local default_answer="${2:-Y}"
+  local raw=""
+  local normalized_default=""
+
+  normalized_default="$(printf '%s' "$default_answer" | tr '[:lower:]' '[:upper:]')"
+
+  if [ ! -r /dev/tty ]; then
+    if [ "$normalized_default" = "Y" ]; then
+      return 0
+    fi
+    return 1
+  fi
+
+  if ! prompt_line_tty_into raw "$prompt_text"; then
+    if [ "$normalized_default" = "Y" ]; then
+      return 0
+    fi
+    return 1
+  fi
+
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | xargs)"
+  if [ -z "$raw" ]; then
+    [ "$normalized_default" = "Y" ]
+    return $?
+  fi
+  case "$raw" in
+    y|yes) return 0 ;;
+    n|no) return 1 ;;
+  esac
+  [ "$normalized_default" = "Y" ]
+}
+
+run_attached_to_tty() {
+  if [ -r /dev/tty ]; then
+    "$@" </dev/tty >/dev/tty 2>&1
+  else
+    "$@"
+  fi
+}
+
+env_decision() {
+  local raw="${1:-ask}"
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    1|y|yes|true|on) echo "yes" ;;
+    0|n|no|false|off) echo "no" ;;
+    *) echo "ask" ;;
+  esac
 }
 
 print_banner() {
@@ -70,24 +141,24 @@ require_macos() {
 
 require_basic_tools() {
   local missing=()
-  for cmd in curl tar python3; do
+  for cmd in curl tar; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       missing+=("$cmd")
     fi
   done
   if [ "${#missing[@]}" -gt 0 ]; then
     log_error "缺少基础命令: ${missing[*]}"
-    if [[ " ${missing[*]} " == *" python3 "* ]]; then
-      log_info "请先安装 Python 3.11+，例如: brew install python@3.11"
-    fi
     exit 1
   fi
 }
 
 ensure_python() {
-  local py
-  py="$(command -v python3)"
-  if "$py" - <<'PY' >/dev/null 2>&1
+  local py=""
+  if command -v python3 >/dev/null 2>&1; then
+    py="$(command -v python3)"
+  fi
+
+  if [ -n "$py" ] && "$py" - <<'PY' >/dev/null 2>&1
 import sys
 raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
 PY
@@ -314,6 +385,7 @@ install_browser_tools() {
 setup_command() {
   mkdir -p "$LOCAL_BIN"
   ln -sf "$INSTALL_DIR/venv/bin/hermes" "$LOCAL_BIN/hermes"
+  HERMES_CMD="$LOCAL_BIN/hermes"
   log_success "hermes 命令已链接到 $LOCAL_BIN/hermes"
 }
 
@@ -497,12 +569,18 @@ configure_dataeyes() {
     existing_key="$(awk '/^[[:space:]]*api_key:[[:space:]]*/ {print $2; exit}' "$HERMES_HOME/config.yaml" 2>/dev/null || true)"
   fi
   if [ -z "$api_key" ]; then
-    log_info "如果已有 DataEyes 配置，将自动复用；否则需要提供 DATAEYES_API_KEY"
+    log_info "如果已有 DataEyes 配置，将自动复用；否则会提示输入 API Key"
     if [ -z "$existing_key" ]; then
-      log_error "未检测到已有 DataEyes API Key。"
-      log_info "请用环境变量方式执行安装命令，例如："
-      log_info "  DATAEYES_API_KEY='你的key' /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)\""
-      exit 1
+      if ! prompt_secret_tty_into api_key "请输入 DataEyes API Key: "; then
+        log_error "无法从当前终端读取 DataEyes API Key。"
+        log_info "请用环境变量方式执行安装命令，例如："
+        log_info "  DATAEYES_API_KEY='你的key' /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)\""
+        exit 1
+      fi
+      if [ -z "$api_key" ]; then
+        log_error "DataEyes API Key 不能为空。"
+        exit 1
+      fi
     fi
   fi
 
@@ -519,6 +597,69 @@ configure_dataeyes() {
   fi
 
   "$VENV_PYTHON" "$helper" "${helper_args[@]}"
+}
+
+maybe_configure_gateway() {
+  case "$(env_decision "$HERMES_CONFIGURE_GATEWAY")" in
+    no) return 0 ;;
+    yes) ;;
+    ask)
+      if ! prompt_yes_no_tty "现在配置消息网关吗？[Y/n] " "Y"; then
+        return 0
+      fi
+      ;;
+  esac
+  if [ ! -r /dev/tty ]; then
+    log_warn "当前不是交互终端，跳过网关配置。可稍后执行: hermes gateway setup"
+    return 0
+  fi
+  log_info "启动 Hermes 网关配置向导"
+  run_attached_to_tty "$HERMES_CMD" gateway setup
+}
+
+maybe_start_gateway_service() {
+  case "$(env_decision "$HERMES_START_GATEWAY")" in
+    no) return 0 ;;
+    yes) ;;
+    ask)
+      if ! prompt_yes_no_tty "现在启动消息网关服务吗？[Y/n] " "Y"; then
+        return 0
+      fi
+      ;;
+  esac
+  log_info "启动网关服务"
+  "$HERMES_CMD" gateway start || log_warn "网关服务启动失败，请稍后手动执行: hermes gateway start"
+}
+
+start_dashboard_background() {
+  mkdir -p "$HERMES_HOME/logs"
+  if lsof -iTCP:9119 -sTCP:LISTEN >/dev/null 2>&1; then
+    log_success "检测到 Web UI 已在运行: http://127.0.0.1:9119"
+    return 0
+  fi
+  nohup "$HERMES_CMD" dashboard --no-open >"$HERMES_HOME/logs/dashboard.log" 2>&1 &
+  sleep 2
+  if lsof -iTCP:9119 -sTCP:LISTEN >/dev/null 2>&1; then
+    log_success "Web UI 已启动: http://127.0.0.1:9119"
+    return 0
+  fi
+  log_warn "Web UI 启动可能失败，请查看: $HERMES_HOME/logs/dashboard.log"
+  return 1
+}
+
+maybe_open_webui() {
+  case "$(env_decision "$HERMES_OPEN_WEBUI")" in
+    no) return 0 ;;
+    yes) ;;
+    ask)
+      if ! prompt_yes_no_tty "现在启动 Web UI 并打开浏览器吗？[Y/n] " "Y"; then
+        return 0
+      fi
+      ;;
+  esac
+  if start_dashboard_background; then
+    open http://127.0.0.1:9119 || log_warn "浏览器打开失败，请手动访问: http://127.0.0.1:9119"
+  fi
 }
 
 print_next_steps() {
@@ -551,6 +692,9 @@ main() {
   setup_command
   ensure_shell_path
   configure_dataeyes
+  maybe_configure_gateway
+  maybe_start_gateway_service
+  maybe_open_webui
   print_next_steps
 }
 
