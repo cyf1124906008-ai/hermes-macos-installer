@@ -38,6 +38,8 @@ DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubuserco
 - 根据这个新 Key 实时请求 `/models`
 - 让用户重新选择模型后写回配置
 
+如果你在安装过程中选择启动 Web UI，安装器会自动确保 `node/npm` 可用，并等待本地 `http://127.0.0.1:9119` 真正可访问后再打开浏览器。
+
 ## 支持的安装行为
 
 - 检测 macOS 和 CPU 架构
