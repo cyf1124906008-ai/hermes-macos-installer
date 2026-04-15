@@ -580,14 +580,27 @@ configure_dataeyes() {
     existing_key="$(normalize_config_token "$existing_key")"
   fi
   if [ -z "$api_key" ]; then
-    log_info "如果已有 DataEyes 配置，将自动复用；否则会提示输入 API Key"
-    if [ -z "$existing_key" ]; then
+    if [ -n "$existing_key" ]; then
+      log_info "将通过终端交互确认 DataEyes API Key。留空可复用当前配置。"
+      if ! prompt_secret_tty_into api_key "请输入 DataEyes API Key [留空复用当前配置]: "; then
+        log_error "无法从当前终端读取 DataEyes API Key。"
+        log_info "请用环境变量方式执行安装命令，例如："
+        log_info "  DATAEYES_API_KEY='你的key' /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)\""
+        exit 1
+      fi
+      api_key="$(normalize_config_token "$api_key")"
+      if [ -z "$api_key" ]; then
+        api_key="$existing_key"
+      fi
+    else
+      log_info "将通过终端交互输入 DataEyes API Key。"
       if ! prompt_secret_tty_into api_key "请输入 DataEyes API Key: "; then
         log_error "无法从当前终端读取 DataEyes API Key。"
         log_info "请用环境变量方式执行安装命令，例如："
         log_info "  DATAEYES_API_KEY='你的key' /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)\""
         exit 1
       fi
+      api_key="$(normalize_config_token "$api_key")"
       if [ -z "$api_key" ]; then
         log_error "DataEyes API Key 不能为空。"
         exit 1
