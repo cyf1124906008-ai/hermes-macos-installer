@@ -38,15 +38,21 @@ log_error() {
   echo -e "${RED}✗${NC} $1"
 }
 
-prompt_secret_tty() {
-  local prompt_text="$1"
+prompt_secret_tty_into() {
+  local __var_name="$1"
+  local prompt_text="$2"
   local value=""
-  if [ -r /dev/tty ]; then
-    printf "%s" "$prompt_text" > /dev/tty
-    IFS= read -rs value < /dev/tty || true
-    printf "\n" > /dev/tty
+  if [ ! -r /dev/tty ]; then
+    return 1
   fi
-  printf "%s" "$value"
+  printf "%s" "$prompt_text" > /dev/tty
+  if ! IFS= read -rs value < /dev/tty; then
+    printf "\n" > /dev/tty
+    return 1
+  fi
+  printf "\n" > /dev/tty
+  printf -v "$__var_name" '%s' "$value"
+  return 0
 }
 
 print_banner() {
@@ -493,7 +499,12 @@ configure_dataeyes() {
   if [ -z "$api_key" ]; then
     log_info "如果已有 DataEyes 配置，将自动复用；否则会提示输入 API Key"
     if [ -z "$existing_key" ]; then
-      api_key="$(prompt_secret_tty '请输入 DataEyes API Key: ')"
+      if ! prompt_secret_tty_into api_key '请输入 DataEyes API Key: '; then
+        log_error "无法从当前终端读取 DataEyes API Key。"
+        log_info "请改用环境变量方式执行，例如："
+        log_info "  DATAEYES_API_KEY='你的key' /bin/bash -c \"\$(curl -fsSL ... )\""
+        exit 1
+      fi
     fi
   fi
 
