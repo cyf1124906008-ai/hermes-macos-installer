@@ -130,18 +130,8 @@ def main() -> int:
     config_path = Path(args.config).expanduser()
     config = load_yaml(config_path)
 
-    current_model = (
-        config.get("model", {}).get("default")
-        if isinstance(config.get("model"), dict)
-        else None
-    )
     current_key = (
         config.get("model", {}).get("api_key")
-        if isinstance(config.get("model"), dict)
-        else None
-    )
-    current_base_url = (
-        config.get("model", {}).get("base_url")
         if isinstance(config.get("model"), dict)
         else None
     )
@@ -167,16 +157,7 @@ def main() -> int:
     if not models:
         models = FALLBACK_MODELS[:]
 
-    if (
-        current_model
-        and current_key == effective_api_key
-        and current_base_url == args.base_url
-        and current_model in models
-    ):
-        chosen_model = current_model
-        print(f"检测到已有 DataEyes 配置，保留模型: {chosen_model}")
-    else:
-        chosen_model = choose_model(models, args.default_model)
+    chosen_model = choose_model(models, args.default_model)
 
     model_cfg = config.setdefault("model", {})
     model_cfg["provider"] = "custom"
