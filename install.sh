@@ -8,7 +8,11 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "${BASH_SOURCE[0]-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  SCRIPT_DIR=""
+fi
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 INSTALL_DIR="${HERMES_INSTALL_DIR:-$HERMES_HOME/hermes-agent}"
 REPO_SLUG="${HERMES_REPO_SLUG:-NousResearch/hermes-agent}"
@@ -18,6 +22,7 @@ HERMES_FORCE_REINSTALL="${HERMES_FORCE_REINSTALL:-0}"
 DATAEYES_BASE_URL="${DATAEYES_BASE_URL:-https://cloud.dataeyes.ai/v1}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 NODE_DIST_MIRROR="${NODE_DIST_MIRROR:-https://npmmirror.com/mirrors/node}"
+MINIFORGE_DIR="${HERMES_MINIFORGE_DIR:-$HERMES_HOME/miniforge3}"
 HERMES_INSTALL_EXTRAS="${HERMES_INSTALL_EXTRAS:-cli,cron,pty,mcp,acp,web,messaging}"
 HERMES_WITH_BROWSER_TOOLS="${HERMES_WITH_BROWSER_TOOLS:-0}"
 HERMES_CONFIGURE_GATEWAY="${HERMES_CONFIGURE_GATEWAY:-ask}"
@@ -164,39 +169,105 @@ require_basic_tools() {
 
 ensure_python() {
   local py=""
-  if command -v python3 >/dev/null 2>&1; then
-    py="$(command -v python3)"
-  fi
-
-  if [ -n "$py" ] && "$py" - <<'PY' >/dev/null 2>&1
+  local candidate=""
+  for candidate in python3 python3.12 python3.11; do
+    if ! command -v "$candidate" >/dev/null 2>&1; then
+      continue
+    fi
+    py="$(command -v "$candidate")"
+    if "$py" - <<'PY' >/dev/null 2>&1
 import sys
 raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
 PY
-  then
-    PYTHON_BIN="$py"
-    log_success "Python 已就绪: $("$PYTHON_BIN" --version 2>&1)"
-    return 0
-  fi
+    then
+      PYTHON_BIN="$py"
+      log_success "Python 已就绪: $("$PYTHON_BIN" --version 2>&1)"
+      return 0
+    fi
+  done
 
   if command -v brew >/dev/null 2>&1; then
     log_warn "当前 python3 版本不足，尝试通过 Homebrew 安装 python@3.11"
     HOMEBREW_BOTTLE_DOMAIN="${HOMEBREW_BOTTLE_DOMAIN:-https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles}" \
-      brew install python@3.11
+      brew install python@3.11 || log_warn "Homebrew 安装 python@3.11 失败，回退到本地 Miniforge Python"
     if [ -x "/opt/homebrew/bin/python3.11" ]; then
       PYTHON_BIN="/opt/homebrew/bin/python3.11"
     elif [ -x "/usr/local/bin/python3.11" ]; then
       PYTHON_BIN="/usr/local/bin/python3.11"
-    else
-      log_error "python@3.11 安装后仍未找到可执行文件"
-      exit 1
+    elif [ -x "/opt/homebrew/bin/python3" ] && /opt/homebrew/bin/python3 - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+    then
+      PYTHON_BIN="/opt/homebrew/bin/python3"
+    elif [ -x "/usr/local/bin/python3" ] && /usr/local/bin/python3 - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+    then
+      PYTHON_BIN="/usr/local/bin/python3"
     fi
-    log_success "Python 已安装: $("$PYTHON_BIN" --version 2>&1)"
+    if [ -n "${PYTHON_BIN:-}" ]; then
+      log_success "Python 已安装: $("$PYTHON_BIN" --version 2>&1)"
+      return 0
+    fi
+  fi
+
+  install_miniforge_python
+}
+
+install_miniforge_python() {
+  local arch=""
+  local installer=""
+  local raw_url=""
+  local primary_url=""
+  local secondary_url=""
+
+  if [ -x "$MINIFORGE_DIR/bin/python3" ] && "$MINIFORGE_DIR/bin/python3" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+  then
+    PYTHON_BIN="$MINIFORGE_DIR/bin/python3"
+    log_success "Python 已就绪: $("$PYTHON_BIN" --version 2>&1)"
     return 0
   fi
 
-  log_error "需要 Python 3.11+。当前系统没有可用版本，且未检测到 Homebrew。"
-  log_info "建议先执行: brew install python@3.11"
-  exit 1
+  case "$(uname -m)" in
+    arm64) arch="arm64" ;;
+    x86_64) arch="x86_64" ;;
+    *)
+      log_error "不支持的 CPU 架构，无法自动安装 Miniforge Python: $(uname -m)"
+      exit 1
+      ;;
+  esac
+
+  installer="$(mktemp -t miniforge-installer).sh"
+  raw_url="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-${arch}.sh"
+  primary_url="https://ghfast.top/${raw_url}"
+  secondary_url="https://mirror.ghproxy.com/${raw_url}"
+
+  log_warn "当前系统没有可用的 Python 3.11+，尝试安装本地 Miniforge 运行时"
+  if ! download_with_fallbacks "$installer" "$primary_url" "$secondary_url" "$raw_url"; then
+    log_error "Miniforge 安装包下载失败。请检查网络，或手动安装 Python 3.11+ 后重试。"
+    exit 1
+  fi
+
+  rm -rf "$MINIFORGE_DIR"
+  if ! bash "$installer" -b -p "$MINIFORGE_DIR" >/dev/null 2>&1; then
+    rm -f "$installer"
+    log_error "Miniforge 安装失败。请手动安装 Python 3.11+ 后重试。"
+    exit 1
+  fi
+  rm -f "$installer"
+
+  if [ ! -x "$MINIFORGE_DIR/bin/python3" ]; then
+    log_error "Miniforge 安装完成后仍未找到 Python 可执行文件"
+    exit 1
+  fi
+
+  PYTHON_BIN="$MINIFORGE_DIR/bin/python3"
+  log_success "Python 已通过 Miniforge 安装: $("$PYTHON_BIN" --version 2>&1)"
 }
 
 ensure_optional_tools() {

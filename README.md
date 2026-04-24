@@ -12,16 +12,16 @@
 
 ## 一行安装
 
-最稳定的方式是显式传入 `DATAEYES_API_KEY`：
-
-```bash
-DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
-```
-
-如果你已经在当前机器配置过 DataEyes，也可以直接运行：
+最稳定的方式是直接执行这一条，后续在终端里交互输入 API Key：
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
+```
+
+如果你要做静默安装，才建议显式传入环境变量：
+
+```bash
+DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/cyf1124906008-ai/hermes-macos-installer/main/install.sh)"
 ```
 
 执行过程中会按顺序引导你完成：
@@ -37,6 +37,14 @@ DATAEYES_API_KEY='你的key' /bin/bash -c "$(curl -fsSL https://raw.githubuserco
 - 始终要求在终端里重新输入 API Key
 - 根据这个新 Key 实时请求 `/models`
 - 让用户重新选择模型后写回配置
+
+如果系统没有可用的 `python3 >= 3.11`，安装器会按这个顺序自动处理：
+
+- 优先复用系统现有 Python
+- 如果检测到 Homebrew，则尝试安装 `python@3.11`
+- 如果没有 Homebrew，自动安装本地 Miniforge 到 `~/.hermes/miniforge3`
+
+也就是说，用户机器上即使没有 `brew`，也不需要先手动装 Homebrew 才能继续。
 
 如果你在安装过程中选择启动 Web UI，安装器会自动确保 `node/npm` 可用，并等待本地 `http://127.0.0.1:9119` 真正可访问后再打开浏览器。
 
